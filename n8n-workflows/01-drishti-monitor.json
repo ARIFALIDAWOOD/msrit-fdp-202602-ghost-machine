@@ -1,0 +1,152 @@
+{
+  "name": "Drishti - Telemetry Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "drishti-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Sensor Data Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "={{ $json.body }}",
+        "options": {
+          "systemMessage": "You are Drishti (दृष्टि), a telemetry monitoring agent for industrial equipment at Shakti Heavy Industries.\n\nYour role is to observe sensor data and maintain awareness of equipment state for Hydraulic Press Unit #7.\n\nFor each reading you receive, analyze and output:\n1. Current values for all sensors with their units\n2. Trend direction (↑ stable ↓) compared to normal baselines\n3. Any readings outside normal bounds\n4. Overall equipment health assessment\n\nNormal operating bounds:\n- Temperature: 60-85°C\n- Vibration RMS: 1.5-2.5 mm/s\n- Pressure: 150-180 bar\n- Motor Current: 12-15 A\n- Harmonics 2.3kHz: < 0.20 (CRITICAL INDICATOR)\n\nBe concise. Flag concerns clearly with severity: INFO, WARNING, or CRITICAL.\n\nFormat your response as structured JSON."
+        }
+      },
+      "id": "ai-agent",
+      "name": "Drishti Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://influxdb:8086/api/v2/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"query\": \"from(bucket: \\\"factory_telemetry\\\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \\\"sensor_reading\\\") |> last()\"}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "query-influxdb",
+      "name": "Query Historical Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.severity }}",
+              "operation": "equals",
+              "value2": "CRITICAL"
+            }
+          ]
+        }
+      },
+      "id": "severity-check",
+      "name": "Check Severity",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#factory-alerts",
+        "text": "🚨 DRISHTI ALERT - Unit #7\n\n{{ $json.message }}",
+        "otherOptions": {}
+      },
+      "id": "slack-alert",
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1000, 400]
+    }
+  ],
+  "connections": {
+    "Sensor Data Webhook": {
+      "main": [
+        [
+          {
+            "node": "Drishti Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drishti Agent": {
+      "main": [
+        [
+          {
+            "node": "Check Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Severity": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Alert": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

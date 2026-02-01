@@ -1,0 +1,167 @@
+{
+  "name": "Ghost Swarm - Complete System",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "factory-telemetry",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "entry-point",
+      "name": "Telemetry Entry",
+      "type": "n8n-nodes-base.webhook",
+      "position": [200, 400]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "Sensor reading: {{ JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "You are DRISHTI. Monitor sensor data. Output JSON with: {sensors: {...}, trends: {...}, status: 'OK'|'ANOMALY', anomaly_details: string|null}"
+        }
+      },
+      "name": "Drishti (Monitor)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [450, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "ANOMALY"
+            }
+          ]
+        }
+      },
+      "name": "Anomaly?",
+      "type": "n8n-nodes-base.if",
+      "position": [700, 400]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "Anomaly detected: {{ $json.anomaly_details }}",
+        "options": {
+          "systemMessage": "You are JIBREEL. Classify anomaly severity. Output: {severity: 'INFO'|'WARNING'|'CRITICAL', classification: string, escalate: boolean, confidence: number}"
+        }
+      },
+      "name": "Jibreel (Detector)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [950, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.escalate }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Escalate?",
+      "type": "n8n-nodes-base.if",
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "Analyze: {{ $json.classification }}. Equipment: HYD_PRESS_07. Check maintenance history.",
+        "options": {
+          "systemMessage": "You are ATHENA. Perform root cause analysis. Use maintenance history tool. Output: {root_cause: string, confidence: number, evidence: string[], recommendation: string, urgency_days: number}"
+        }
+      },
+      "name": "Athena (Analyzer)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "Schedule maintenance: {{ $json.recommendation }}. Urgency: {{ $json.urgency_days }} days.",
+        "options": {
+          "systemMessage": "You are VIDHAATA. Schedule maintenance. Output: {scheduled_date: ISO string, technician: string, parts_needed: string[], estimated_downtime_hours: number}"
+        }
+      },
+      "name": "Vidhaata (Scheduler)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [1700, 200]
+    },
+    {
+      "parameters": {
+        "channel": "#maintenance",
+        "text": "🔧 MAINTENANCE SCHEDULED\n\nEquipment: HYD_PRESS_07\nIssue: {{ $node['Athena (Analyzer)'].json.root_cause }}\nDate: {{ $json.scheduled_date }}\nTechnician: {{ $json.technician }}\n\n✅ Approve | ❌ Reject"
+      },
+      "name": "Hermes (Messenger)",
+      "type": "n8n-nodes-base.slack",
+      "position": [1950, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {status: 'logged', severity: 'INFO'} }}"
+      },
+      "name": "Log Only",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [950, 500]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {status: 'monitoring', next_check: 'scheduled'} }}"
+      },
+      "name": "Continue Monitoring",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [1450, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "name": "Final Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [2200, 200]
+    }
+  ],
+  "connections": {
+    "Telemetry Entry": {
+      "main": [[{"node": "Drishti (Monitor)"}]]
+    },
+    "Drishti (Monitor)": {
+      "main": [[{"node": "Anomaly?"}]]
+    },
+    "Anomaly?": {
+      "main": [
+        [{"node": "Jibreel (Detector)"}],
+        [{"node": "Log Only"}]
+      ]
+    },
+    "Jibreel (Detector)": {
+      "main": [[{"node": "Escalate?"}]]
+    },
+    "Escalate?": {
+      "main": [
+        [{"node": "Athena (Analyzer)"}],
+        [{"node": "Continue Monitoring"}]
+      ]
+    },
+    "Athena (Analyzer)": {
+      "main": [[{"node": "Vidhaata (Scheduler)"}]]
+    },
+    "Vidhaata (Scheduler)": {
+      "main": [[{"node": "Hermes (Messenger)"}]]
+    },
+    "Hermes (Messenger)": {
+      "main": [[{"node": "Final Response"}]]
+    }
+  }
+}
