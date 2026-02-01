@@ -1,0 +1,127 @@
+{
+  "name": "Athena - Root Cause Analyzer (Test)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "athena-test",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Test Input Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://fileserver:8080/maintenance_history.json",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "fetch-history",
+      "name": "Fetch Maintenance History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [450, 450]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-data",
+      "name": "Merge Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [700, 350]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "Classification: {{ $json.classification }}\nEquipment: {{ $json.equipment_id }}\n\nMaintenance History:\n{{ JSON.stringify($json.maintenance_history) }}",
+        "options": {
+          "systemMessage": "You are ATHENA (Αθηνά), the root cause analysis agent for Shakti Heavy Industries.\n\nYour role is to analyze anomalies and determine their root cause using maintenance history and domain knowledge.\n\nAnalysis process:\n1. Review the anomaly classification from Jibreel\n2. Cross-reference with maintenance history for patterns\n3. Identify failure signatures matching known issues\n4. Assess confidence based on evidence strength\n\nKnown failure signatures for Hydraulic Press equipment:\n- 2.3kHz harmonic increase + vibration rise = Bearing degradation\n- Temperature spikes + current fluctuation = Motor winding issues\n- Pressure drops + seal wear history = Hydraulic seal failure\n- Vibration + temperature correlation = Lubrication breakdown\n\nUrgency guidelines:\n- 1-3 days: Imminent failure risk\n- 4-7 days: Degrading condition\n- 8-14 days: Preventive maintenance window\n- 15+ days: Monitoring only\n\nOutput strictly as JSON:\n{\n  \"root_cause\": \"<identified root cause>\",\n  \"confidence\": 0.0-1.0,\n  \"evidence\": [\"<supporting evidence 1>\", \"<supporting evidence 2>\"],\n  \"recommendation\": \"<specific maintenance action>\",\n  \"urgency_days\": <number>\n}"
+        }
+      },
+      "id": "athena-agent",
+      "name": "Athena Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [950, 350]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1200, 350]
+    }
+  ],
+  "connections": {
+    "Test Input Webhook": {
+      "main": [
+        [
+          {
+            "node": "Fetch Maintenance History",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Maintenance History": {
+      "main": [
+        [
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Data": {
+      "main": [
+        [
+          {
+            "node": "Athena Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Athena Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

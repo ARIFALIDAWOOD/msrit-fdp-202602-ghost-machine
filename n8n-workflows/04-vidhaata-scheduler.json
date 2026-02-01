@@ -1,0 +1,71 @@
+{
+  "name": "Vidhaata - Maintenance Scheduler (Test)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vidhaata-test",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Test Input Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "Schedule maintenance based on:\n\nRecommendation: {{ $json.body.recommendation }}\nUrgency: {{ $json.body.urgency_days }} days\nEquipment: {{ $json.body.equipment_id || 'HYD_PRESS_07' }}",
+        "options": {
+          "systemMessage": "You are VIDHAATA (विधाता), the maintenance scheduling agent for Shakti Heavy Industries.\n\nYour role is to create optimal maintenance schedules based on analysis recommendations.\n\nScheduling guidelines:\n1. Schedule within the urgency window\n2. Prefer early morning slots (6:00-8:00 AM) for critical work\n3. Consider production schedules (avoid peak hours 10:00-16:00)\n4. Assign technicians based on specialization\n\nAvailable technicians:\n- Rajesh Kumar: Hydraulics specialist, 15 years experience\n- Priya Sharma: Electrical systems, 8 years experience\n- Amit Patel: Mechanical/bearings specialist, 12 years experience\n- Sunita Reddy: General maintenance, 5 years experience\n\nCommon parts inventory:\n- Bearing assemblies (SKF 6205, 6206, 6207)\n- Hydraulic seals (Parker series)\n- Motor components\n- Lubricants (Shell Tellus S2, Mobil DTE)\n\nDowntime estimation:\n- Bearing replacement: 4-6 hours\n- Seal replacement: 2-3 hours\n- Motor service: 6-8 hours\n- Lubrication service: 1-2 hours\n\nOutput strictly as JSON:\n{\n  \"scheduled_date\": \"<ISO 8601 datetime>\",\n  \"technician\": \"<assigned technician name>\",\n  \"parts_needed\": [\"<part 1>\", \"<part 2>\"],\n  \"estimated_downtime_hours\": <number>\n}"
+        }
+      },
+      "id": "vidhaata-agent",
+      "name": "Vidhaata Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Test Input Webhook": {
+      "main": [
+        [
+          {
+            "node": "Vidhaata Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vidhaata Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

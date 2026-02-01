@@ -1,0 +1,144 @@
+{
+  "name": "Anomaly Detection Chain (Drishti → Jibreel)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "anomaly-chain-test",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Sensor Data Input",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "Sensor reading: {{ JSON.stringify($json.body) }}",
+        "options": {
+          "systemMessage": "You are DRISHTI (दृष्टि), the telemetry monitoring agent for Shakti Heavy Industries.\n\nAnalyze the sensor data and determine if there is an anomaly.\n\nNormal operating bounds for Hydraulic Press Unit #7:\n- Temperature: 60-85°C\n- Vibration RMS: 1.5-2.5 mm/s\n- Pressure: 150-180 bar\n- Motor Current: 12-15 A\n- Harmonics 2.3kHz: < 0.20 (CRITICAL INDICATOR)\n\nOutput strictly as JSON:\n{\n  \"sensors\": {\"<sensor_name>\": <value>, ...},\n  \"trends\": {\"<sensor_name>\": \"↑\" | \"→\" | \"↓\", ...},\n  \"status\": \"OK\" | \"ANOMALY\",\n  \"anomaly_details\": \"<description if ANOMALY, null if OK>\"\n}"
+        }
+      },
+      "id": "drishti-agent",
+      "name": "Drishti (Monitor)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equals",
+              "value2": "ANOMALY"
+            }
+          ]
+        }
+      },
+      "id": "anomaly-check",
+      "name": "Anomaly Detected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "Anomaly detected: {{ $json.anomaly_details }}\n\nSensor values: {{ JSON.stringify($json.sensors) }}",
+        "options": {
+          "systemMessage": "You are JIBREEL (جبريل), the anomaly classification agent for Shakti Heavy Industries.\n\nClassify the severity of the detected anomaly.\n\nClassification guidelines:\n- INFO: Minor deviation, within acceptable variance\n- WARNING: Notable deviation, monitor closely\n- CRITICAL: Significant deviation, potential failure imminent\n\nEscalation triggers (set escalate: true):\n- Any CRITICAL severity\n- WARNING with confidence > 0.8\n- Multiple correlated anomalies\n\nOutput strictly as JSON:\n{\n  \"severity\": \"INFO\" | \"WARNING\" | \"CRITICAL\",\n  \"classification\": \"<anomaly type description>\",\n  \"escalate\": true | false,\n  \"confidence\": 0.0-1.0\n}"
+        }
+      },
+      "id": "jibreel-agent",
+      "name": "Jibreel (Detector)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [950, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {pipeline: 'anomaly-detection', stage: 'complete', drishti_status: $node['Drishti (Monitor)'].json.status, jibreel_result: $json} }}"
+      },
+      "id": "respond-classified",
+      "name": "Respond (Classified)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1200, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {pipeline: 'anomaly-detection', stage: 'complete', drishti_status: 'OK', message: 'No anomaly detected'} }}"
+      },
+      "id": "respond-ok",
+      "name": "Respond (OK)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [950, 400]
+    }
+  ],
+  "connections": {
+    "Sensor Data Input": {
+      "main": [
+        [
+          {
+            "node": "Drishti (Monitor)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drishti (Monitor)": {
+      "main": [
+        [
+          {
+            "node": "Anomaly Detected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anomaly Detected?": {
+      "main": [
+        [
+          {
+            "node": "Jibreel (Detector)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond (OK)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jibreel (Detector)": {
+      "main": [
+        [
+          {
+            "node": "Respond (Classified)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

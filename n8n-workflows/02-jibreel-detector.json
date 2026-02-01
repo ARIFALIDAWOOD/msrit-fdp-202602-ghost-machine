@@ -1,0 +1,71 @@
+{
+  "name": "Jibreel - Anomaly Detector (Test)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jibreel-test",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Test Input Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "Anomaly detected: {{ $json.body.anomaly_details }}\n\nSensor context: {{ JSON.stringify($json.body.sensor_context) }}",
+        "options": {
+          "systemMessage": "You are JIBREEL (جبريل), the anomaly classification agent for Shakti Heavy Industries.\n\nYour role is to assess anomalies detected by Drishti and classify their severity.\n\nClassification guidelines:\n- INFO: Minor deviation, within acceptable variance\n- WARNING: Notable deviation, monitor closely, may need attention within days\n- CRITICAL: Significant deviation indicating potential failure, immediate escalation required\n\nEscalation triggers (set escalate: true):\n- Any CRITICAL severity\n- WARNING with confidence > 0.8\n- Patterns matching known failure signatures\n- Multiple correlated anomalies\n\nOutput strictly as JSON:\n{\n  \"severity\": \"INFO\" | \"WARNING\" | \"CRITICAL\",\n  \"classification\": \"<brief description of the anomaly type>\",\n  \"escalate\": true | false,\n  \"confidence\": 0.0-1.0\n}"
+        }
+      },
+      "id": "jibreel-agent",
+      "name": "Jibreel Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Test Input Webhook": {
+      "main": [
+        [
+          {
+            "node": "Jibreel Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jibreel Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

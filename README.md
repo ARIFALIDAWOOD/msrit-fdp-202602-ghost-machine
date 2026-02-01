@@ -22,25 +22,71 @@ python maintenance_history.py --output-dir ../
 1. Open your n8n instance
 2. Go to **Settings** > **Import from file**
 3. Import workflows from `n8n-workflows/`:
-   - `01-drishti-monitor.json` - Basic monitoring
-   - `07-complete-swarm.json` - Complete agent swarm
 
-### 3. Test the Workflow
+**Individual Agent Tests:**
+- `01-drishti-monitor.json` - Basic monitoring
+- `02-jibreel-detector.json` - Anomaly classification
+- `03-athena-analyzer.json` - Root cause analysis
+- `04-vidhaata-scheduler.json` - Maintenance scheduling
+- `05-hermes-messenger.json` - Slack notifications
+
+**Chain Tests:**
+- `06-anomaly-detection-chain.json` - Drishti → Jibreel pipeline
+- `07-complete-swarm.json` - Complete agent swarm
+- `08-escalation-chain.json` - Jibreel → Athena → Vidhaata chain
+
+### 3. Test the Workflows
 
 ```bash
-# Send test data to Drishti
+# Test Drishti (basic monitoring)
 curl -X POST http://localhost:5678/webhook/drishti-webhook \
   -H "Content-Type: application/json" \
   -d '{"sensors":{"vibration_rms":2.1,"temperature":72}}'
+
+# Test Jibreel (anomaly classification)
+curl -X POST http://localhost:5678/webhook/jibreel-test \
+  -H "Content-Type: application/json" \
+  -d '{"anomaly_details":"2.3kHz harmonic at 0.25, vibration_rms at 3.1","sensor_context":{"harmonics_2_3khz":0.25,"vibration_rms":3.1}}'
+
+# Test Athena (root cause analysis)
+curl -X POST http://localhost:5678/webhook/athena-test \
+  -H "Content-Type: application/json" \
+  -d '{"classification":"Bearing degradation signature","equipment_id":"HYD_PRESS_07"}'
+
+# Test Vidhaata (maintenance scheduling)
+curl -X POST http://localhost:5678/webhook/vidhaata-test \
+  -H "Content-Type: application/json" \
+  -d '{"recommendation":"Replace main bearing assembly","urgency_days":5,"equipment_id":"HYD_PRESS_07"}'
+
+# Test Hermes (Slack notification)
+curl -X POST http://localhost:5678/webhook/hermes-test \
+  -H "Content-Type: application/json" \
+  -d '{"equipment_id":"HYD_PRESS_07","root_cause":"Bearing degradation","scheduled_date":"2026-02-05T06:00:00Z","technician":"Amit Patel","parts_needed":["SKF 6206 bearing"],"estimated_downtime_hours":5}'
+
+# Test Anomaly Detection Chain (Drishti → Jibreel)
+curl -X POST http://localhost:5678/webhook/anomaly-chain-test \
+  -H "Content-Type: application/json" \
+  -d '{"temperature":78,"vibration_rms":3.2,"pressure":165,"motor_current":14.5,"harmonics_2_3khz":0.28}'
+
+# Test Escalation Chain (Jibreel → Athena → Vidhaata)
+curl -X POST http://localhost:5678/webhook/escalation-test \
+  -H "Content-Type: application/json" \
+  -d '{"anomaly_details":"Critical harmonic drift detected at 2.3kHz","sensor_context":{"harmonics_2_3khz":0.32,"vibration_rms":3.5,"temperature":82}}'
 ```
 
 ## Repository Structure
 
 ```
 .
-├── n8n-workflows/              # n8n workflow definitions
-│   ├── 01-drishti-monitor.json # Basic monitoring workflow
-│   └── 07-complete-swarm.json  # Complete agent swarm
+├── n8n-workflows/                        # n8n workflow definitions
+│   ├── 01-drishti-monitor.json           # Basic monitoring workflow
+│   ├── 02-jibreel-detector.json          # Isolated anomaly classification
+│   ├── 03-athena-analyzer.json           # Root cause analysis testing
+│   ├── 04-vidhaata-scheduler.json        # Maintenance scheduling
+│   ├── 05-hermes-messenger.json          # Slack notification testing
+│   ├── 06-anomaly-detection-chain.json   # Drishti → Jibreel pipeline
+│   ├── 07-complete-swarm.json            # Complete agent swarm
+│   └── 08-escalation-chain.json          # Jibreel → Athena → Vidhaata chain
 │
 ├── sample-data/                # Data files
 │   ├── generators/             # Python data generators
