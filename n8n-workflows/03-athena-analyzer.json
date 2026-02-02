@@ -1,127 +1,125 @@
 {
-  "name": "Athena - Root Cause Analyzer (Test)",
+  "name": "🧠 Athena - Root Cause Analyzer",
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "athena-test",
-        "responseMode": "responseNode",
-        "options": {}
+        "mode": "defineBelow",
+        "fields": {
+          "values": [
+            { "name": "anomaly_report", "type": "string" },
+            { "name": "equipment_id", "type": "string" },
+            { "name": "maintenance_history", "type": "string" }
+          ]
+        }
       },
-      "id": "webhook-trigger",
-      "name": "Test Input Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [200, 300]
+      "id": "trigger",
+      "name": "When Called By Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [180, 300]
     },
     {
       "parameters": {
-        "url": "http://fileserver:8080/maintenance_history.json",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true
-            }
-          }
-        }
+        "httpMethod": "POST",
+        "path": "athena-analyze",
+        "options": {}
       },
-      "id": "fetch-history",
-      "name": "Fetch Maintenance History",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [450, 450]
+      "id": "webhook",
+      "name": "Webhook - Direct Test",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 500],
+      "webhookId": "athena-test"
     },
     {
       "parameters": {
         "mode": "combine",
-        "combineBy": "combineAll",
+        "mergeByFields": { "values": [] },
         "options": {}
       },
-      "id": "merge-data",
-      "name": "Merge Data",
+      "id": "merge",
+      "name": "Merge Inputs",
       "type": "n8n-nodes-base.merge",
-      "typeVersion": 2.1,
-      "position": [700, 350]
+      "typeVersion": 3,
+      "position": [400, 400]
     },
     {
       "parameters": {
-        "agent": "conversationalAgent",
+        "jsCode": "// Inject maintenance history knowledge base\nconst maintenanceHistory = {\n  equipment_id: 'HYD_PRESS_07',\n  records: [\n    {\n      record_id: 'MNT-2021-0342',\n      date: '2021-08-15',\n      type: 'preventive',\n      description: 'Main spindle bearing replacement',\n      parts_replaced: ['SKF 6205-2RS bearing', 'Seal kit'],\n      notes: 'Manufacturer recommended replacement at 15,000 operating hours or 900 days'\n    },\n    {\n      record_id: 'MNT-2023-0412',\n      date: '2023-07-05',\n      type: 'emergency',\n      description: 'CATASTROPHIC BEARING FAILURE - Unit #4',\n      notes: 'Root cause: missed warning signs in vibration data - 2.3kHz harmonic drift detected in post-analysis'\n    }\n  ],\n  specs: {\n    bearing_type: 'SKF 6205-2RS',\n    bearing_mtbf_days: 900,\n    last_bearing_replacement_days_ago: 847,\n    current_operating_hours: 12450\n  }\n};\n\nconst input = $input.first().json;\nreturn {\n  json: {\n    ...input,\n    maintenance_history: input.maintenance_history || JSON.stringify(maintenanceHistory)\n  }\n};"
+      },
+      "id": "inject-knowledge",
+      "name": "Inject Maintenance History",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 400]
+    },
+    {
+      "parameters": {
         "promptType": "define",
-        "text": "Classification: {{ $json.classification }}\nEquipment: {{ $json.equipment_id }}\n\nMaintenance History:\n{{ JSON.stringify($json.maintenance_history) }}",
+        "text": "=Perform root cause analysis for this anomaly:\n\nANOMALY REPORT FROM JIBREEL:\n{{ $json.anomaly_report || JSON.stringify($json.body) }}\n\nEQUIPMENT: {{ $json.equipment_id || 'HYD_PRESS_07' }}\n\nMAINTENANCE HISTORY:\n{{ $json.maintenance_history }}",
         "options": {
-          "systemMessage": "You are ATHENA (Αθηνά), the root cause analysis agent for Shakti Heavy Industries.\n\nYour role is to analyze anomalies and determine their root cause using maintenance history and domain knowledge.\n\nAnalysis process:\n1. Review the anomaly classification from Jibreel\n2. Cross-reference with maintenance history for patterns\n3. Identify failure signatures matching known issues\n4. Assess confidence based on evidence strength\n\nKnown failure signatures for Hydraulic Press equipment:\n- 2.3kHz harmonic increase + vibration rise = Bearing degradation\n- Temperature spikes + current fluctuation = Motor winding issues\n- Pressure drops + seal wear history = Hydraulic seal failure\n- Vibration + temperature correlation = Lubrication breakdown\n\nUrgency guidelines:\n- 1-3 days: Imminent failure risk\n- 4-7 days: Degrading condition\n- 8-14 days: Preventive maintenance window\n- 15+ days: Monitoring only\n\nOutput strictly as JSON:\n{\n  \"root_cause\": \"<identified root cause>\",\n  \"confidence\": 0.0-1.0,\n  \"evidence\": [\"<supporting evidence 1>\", \"<supporting evidence 2>\"],\n  \"recommendation\": \"<specific maintenance action>\",\n  \"urgency_days\": <number>\n}"
+          "systemMessage": "You are ATHENA (Greek goddess of wisdom), a root cause analysis agent for industrial equipment.\n\nWhen JIBREEL escalates an anomaly, you must:\n1. Analyze the pattern against known failure signatures\n2. Cross-reference with maintenance history\n3. Identify the most likely root cause\n4. Provide actionable recommendations\n\n## CRITICAL KNOWLEDGE:\n- Bearing degradation signature: 2.3kHz harmonic drift + correlated motor current increase\n- Unit #4 had catastrophic bearing failure in 2023 - same pattern was missed\n- Current bearing age: ~847 days (MTBF is 900 days)\n- Bearing replacement is a 6-hour job requiring SKF 6205-2RS\n\n## OUTPUT FORMAT (JSON):\n```json\n{\n  \"root_cause\": {\n    \"primary\": \"Most likely cause\",\n    \"confidence\": 0.0-1.0,\n    \"alternatives\": [\"Other possible causes\"]\n  },\n  \"evidence\": [\n    \"Evidence point 1\",\n    \"Evidence point 2\"\n  ],\n  \"historical_match\": {\n    \"matched\": true | false,\n    \"reference\": \"MNT-XXXX-XXXX or null\",\n    \"similarity\": 0.0-1.0\n  },\n  \"risk_assessment\": {\n    \"severity\": \"LOW\" | \"MEDIUM\" | \"HIGH\" | \"CRITICAL\",\n    \"time_to_failure_estimate\": {\n      \"min_days\": number,\n      \"max_days\": number\n    },\n    \"consequence_if_ignored\": \"Description\"\n  },\n  \"recommendation\": {\n    \"action\": \"Specific action to take\",\n    \"urgency\": \"IMMEDIATE\" | \"WITHIN_WEEK\" | \"SCHEDULED\",\n    \"parts_needed\": [\"List of parts\"],\n    \"estimated_downtime_hours\": number\n  },\n  \"reasoning\": \"Step-by-step analysis reasoning\"\n}\n```\n\nAlways cite evidence. Uncertainty is acceptable; overconfidence is dangerous."
         }
       },
-      "id": "athena-agent",
+      "id": "agent",
       "name": "Athena Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.6,
-      "position": [950, 350]
+      "typeVersion": 1.7,
+      "position": [840, 400]
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}"
+        "model": "gpt-4o",
+        "options": { "temperature": 0.3 }
       },
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
+      "id": "openai",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1,
-      "position": [1200, 350]
+      "position": [840, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $input.first().json.output;\ntry {\n  const jsonMatch = output.match(/```json\\n([\\s\\S]*?)\\n```/) || output.match(/\\{[\\s\\S]*\\}/);\n  const parsed = jsonMatch ? JSON.parse(jsonMatch[1] || jsonMatch[0]) : { raw: output };\n  return { json: { ...parsed, agent: 'ATHENA', processed_at: new Date().toISOString() } };\n} catch (e) {\n  return { json: { agent: 'ATHENA', parse_error: true, raw_output: output } };\n}"
+      },
+      "id": "parse",
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 400]
+    },
+    {
+      "parameters": { "options": {} },
+      "id": "respond",
+      "name": "Return Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1280, 500]
     }
   ],
   "connections": {
-    "Test Input Webhook": {
-      "main": [
-        [
-          {
-            "node": "Fetch Maintenance History",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Merge Data",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "When Called By Another Workflow": {
+      "main": [[{ "node": "Merge Inputs", "type": "main", "index": 0 }]]
     },
-    "Fetch Maintenance History": {
-      "main": [
-        [
-          {
-            "node": "Merge Data",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
+    "Webhook - Direct Test": {
+      "main": [[{ "node": "Merge Inputs", "type": "main", "index": 1 }]]
     },
-    "Merge Data": {
-      "main": [
-        [
-          {
-            "node": "Athena Agent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Merge Inputs": {
+      "main": [[{ "node": "Inject Maintenance History", "type": "main", "index": 0 }]]
+    },
+    "Inject Maintenance History": {
+      "main": [[{ "node": "Athena Agent", "type": "main", "index": 0 }]]
     },
     "Athena Agent": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [[{ "node": "Athena Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Parse Response": {
+      "main": [[{ "node": "Return Result", "type": "main", "index": 0 }]]
     }
   },
-  "settings": {
-    "executionOrder": "v1"
-  }
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "Ghost-Agents" }, { "name": "Layer-1" }]
 }

@@ -1,71 +1,121 @@
 {
-  "name": "Jibreel - Anomaly Detector (Test)",
+  "name": "⚠️ Jibreel - Anomaly Detector",
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "jibreel-test",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "webhook-trigger",
-      "name": "Test Input Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [250, 300]
-    },
-    {
-      "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "Anomaly detected: {{ $json.body.anomaly_details }}\n\nSensor context: {{ JSON.stringify($json.body.sensor_context) }}",
-        "options": {
-          "systemMessage": "You are JIBREEL (جبريل), the anomaly classification agent for Shakti Heavy Industries.\n\nYour role is to assess anomalies detected by Drishti and classify their severity.\n\nClassification guidelines:\n- INFO: Minor deviation, within acceptable variance\n- WARNING: Notable deviation, monitor closely, may need attention within days\n- CRITICAL: Significant deviation indicating potential failure, immediate escalation required\n\nEscalation triggers (set escalate: true):\n- Any CRITICAL severity\n- WARNING with confidence > 0.8\n- Patterns matching known failure signatures\n- Multiple correlated anomalies\n\nOutput strictly as JSON:\n{\n  \"severity\": \"INFO\" | \"WARNING\" | \"CRITICAL\",\n  \"classification\": \"<brief description of the anomaly type>\",\n  \"escalate\": true | false,\n  \"confidence\": 0.0-1.0\n}"
+        "mode": "defineBelow",
+        "fields": {
+          "values": [
+            {
+              "name": "drishti_report",
+              "type": "string"
+            },
+            {
+              "name": "historical_context",
+              "type": "string"
+            }
+          ]
         }
       },
-      "id": "jibreel-agent",
-      "name": "Jibreel Agent",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.6,
-      "position": [500, 300]
+      "id": "trigger",
+      "name": "When Called By Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [180, 300]
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}"
+        "httpMethod": "POST",
+        "path": "jibreel-detect",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook - Direct Test",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 500],
+      "webhookId": "jibreel-test"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "mergeByFields": { "values": [] },
+        "options": {}
+      },
+      "id": "merge",
+      "name": "Merge Inputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [400, 400]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze this monitoring report from Drishti for anomalies:\n\nDRISHTI REPORT:\n{{ $json.drishti_report || JSON.stringify($json.body) }}\n\n{% if $json.historical_context %}HISTORICAL CONTEXT:\n{{ $json.historical_context }}{% endif %}",
+        "options": {
+          "systemMessage": "You are JIBREEL (جبریل - named after the angel who delivers warnings), an anomaly detection agent.\n\nYou receive observations from DRISHTI and must determine if they indicate a genuine anomaly requiring attention.\n\n## ANOMALY CLASSIFICATION:\n\n### INFO (No concern)\n- All values within normal bounds\n- Normal operational variance\n- No pattern changes\n\n### WARNING (Monitor closely)\n- One or more values slightly elevated but not critical\n- Emerging trend that bears watching\n- Correlated changes across multiple sensors\n- Harmonics drift detected but below critical threshold\n\n### CRITICAL (Immediate escalation)\n- Any value significantly outside bounds\n- Harmonics 2.3kHz > 0.20 OR drift > 15%\n- Pattern matches known failure signatures\n- Multiple correlated anomalies\n\n## OUTPUT FORMAT (JSON):\n```json\n{\n  \"classification\": \"INFO\" | \"WARNING\" | \"CRITICAL\",\n  \"confidence\": 0.0-1.0,\n  \"anomaly_detected\": true | false,\n  \"anomaly_type\": \"point\" | \"contextual\" | \"collective\" | \"none\",\n  \"affected_sensors\": [\"list of sensor names\"],\n  \"pattern_description\": \"Description of detected pattern\",\n  \"escalate_to_athena\": true | false,\n  \"reasoning\": \"Step-by-step reasoning for classification\",\n  \"recommended_action\": \"Specific next step\"\n}\n```\n\nNEVER cry wolf. False positives erode trust. Be certain before classifying as CRITICAL."
+        }
+      },
+      "id": "agent",
+      "name": "Jibreel Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [620, 400]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "openai",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [620, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $input.first().json.output;\n\ntry {\n  const jsonMatch = output.match(/```json\\n([\\s\\S]*?)\\n```/) || output.match(/\\{[\\s\\S]*\\}/);\n  const parsed = jsonMatch ? JSON.parse(jsonMatch[1] || jsonMatch[0]) : { raw: output };\n  \n  return {\n    json: {\n      ...parsed,\n      agent: 'JIBREEL',\n      processed_at: new Date().toISOString()\n    }\n  };\n} catch (e) {\n  return {\n    json: {\n      agent: 'JIBREEL',\n      classification: 'PARSE_ERROR',\n      raw_output: output,\n      error: e.message\n    }\n  };\n}"
+      },
+      "id": "parse",
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 400]
+    },
+    {
+      "parameters": {
+        "options": {}
       },
       "id": "respond",
-      "name": "Respond",
+      "name": "Return Result",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [750, 300]
+      "typeVersion": 1.1,
+      "position": [1060, 500]
     }
   ],
   "connections": {
-    "Test Input Webhook": {
-      "main": [
-        [
-          {
-            "node": "Jibreel Agent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "When Called By Another Workflow": {
+      "main": [[{ "node": "Merge Inputs", "type": "main", "index": 0 }]]
+    },
+    "Webhook - Direct Test": {
+      "main": [[{ "node": "Merge Inputs", "type": "main", "index": 1 }]]
+    },
+    "Merge Inputs": {
+      "main": [[{ "node": "Jibreel Agent", "type": "main", "index": 0 }]]
     },
     "Jibreel Agent": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [[{ "node": "Jibreel Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Parse Response": {
+      "main": [[{ "node": "Return Result", "type": "main", "index": 0 }]]
     }
   },
-  "settings": {
-    "executionOrder": "v1"
-  }
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "Ghost-Agents" }, { "name": "Layer-1" }]
 }

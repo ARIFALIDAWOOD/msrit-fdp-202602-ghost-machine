@@ -1,191 +1,191 @@
 {
-  "name": "Escalation Chain (Jibreel → Athena → Vidhaata)",
+  "name": "🔗 Escalation Chain (Athena → Vidhaata → Hermes)",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "escalation-test",
-        "responseMode": "responseNode",
+        "path": "escalation-chain",
         "options": {}
       },
-      "id": "webhook-trigger",
-      "name": "Pre-classified Anomaly Input",
+      "id": "webhook",
+      "name": "Receive Anomaly",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [150, 300]
+      "position": [180, 400],
+      "webhookId": "escalation-chain"
     },
     {
       "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "Anomaly: {{ $json.body.anomaly_details }}\nSensor context: {{ JSON.stringify($json.body.sensor_context) }}",
-        "options": {
-          "systemMessage": "You are JIBREEL (جبريل), the anomaly classification agent.\n\nClassify severity:\n- INFO: Minor deviation\n- WARNING: Notable deviation\n- CRITICAL: Potential failure\n\nOutput JSON:\n{\n  \"severity\": \"INFO\" | \"WARNING\" | \"CRITICAL\",\n  \"classification\": \"<type>\",\n  \"escalate\": true | false,\n  \"confidence\": 0.0-1.0\n}"
+        "jsCode": "const input = $input.first().json.body || $input.first().json;\n\nreturn {\n  json: {\n    anomaly_report: JSON.stringify(input),\n    equipment_id: input.equipment_id || 'HYD_PRESS_07'\n  }\n};"
+      },
+      "id": "prepare-athena",
+      "name": "Prepare for Athena",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 400]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "ATHENA_WORKFLOW_ID",
+          "mode": "id"
         }
       },
-      "id": "jibreel-agent",
-      "name": "Jibreel (Detector)",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.6,
-      "position": [400, 300]
+      "id": "call-athena",
+      "name": "Call Athena (Analyze)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [620, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const athenaResult = $input.first().json;\n\nreturn {\n  json: {\n    diagnosis: JSON.stringify(athenaResult),\n    urgency: athenaResult.recommendation?.urgency || 'WITHIN_WEEK',\n    parts_needed: JSON.stringify(athenaResult.recommendation?.parts_needed || [])\n  }\n};"
+      },
+      "id": "prepare-vidhaata",
+      "name": "Prepare for Vidhaata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 400]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "VIDHAATA_WORKFLOW_ID",
+          "mode": "id"
+        }
+      },
+      "id": "call-vidhaata",
+      "name": "Call Vidhaata (Schedule)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1060, 400]
     },
     {
       "parameters": {
         "conditions": {
-          "boolean": [
-            {
-              "value1": "={{ $json.escalate }}",
-              "value2": true
-            }
-          ]
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "id": "approval-check",
+            "leftValue": "={{ $json.requires_human_approval }}",
+            "rightValue": true,
+            "operator": { "type": "boolean", "operation": "equals" }
+          }]
         }
       },
-      "id": "escalate-check",
-      "name": "Escalate?",
+      "id": "needs-approval",
+      "name": "Needs Human Approval?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [650, 300]
+      "typeVersion": 2,
+      "position": [1280, 400]
     },
     {
       "parameters": {
-        "url": "http://fileserver:8080/maintenance_history.json",
+        "jsCode": "const athenaResult = $('Call Athena (Analyze)').first().json;\nconst vidhaataResult = $('Call Vidhaata (Schedule)').first().json;\n\nreturn {\n  json: {\n    message_type: 'MAINTENANCE_APPROVAL_REQUIRED',\n    severity: 'WARNING',\n    content: {\n      diagnosis: athenaResult.root_cause,\n      proposed_schedule: vidhaataResult.scheduled_maintenance,\n      assigned_technician: vidhaataResult.assigned_technician,\n      approval_reason: vidhaataResult.approval_reason,\n      actions: ['APPROVE', 'REJECT', 'MODIFY']\n    }\n  }\n};"
+      },
+      "id": "prepare-approval-message",
+      "name": "Prepare Approval Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const athenaResult = $('Call Athena (Analyze)').first().json;\nconst vidhaataResult = $('Call Vidhaata (Schedule)').first().json;\n\nreturn {\n  json: {\n    message_type: 'MAINTENANCE_SCHEDULED',\n    severity: 'SUCCESS',\n    content: {\n      diagnosis: athenaResult.root_cause,\n      schedule: vidhaataResult.scheduled_maintenance,\n      technician: vidhaataResult.assigned_technician\n    }\n  }\n};"
+      },
+      "id": "prepare-notification",
+      "name": "Prepare Notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 500]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "mergeByFields": { "values": [] },
         "options": {}
       },
-      "id": "fetch-history",
-      "name": "Fetch Maintenance History",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [900, 200]
+      "id": "merge-messages",
+      "name": "Merge Messages",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1720, 400]
     },
     {
       "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "Classification: {{ $node['Jibreel (Detector)'].json.classification }}\nEquipment: HYD_PRESS_07\nMaintenance History: {{ JSON.stringify($json) }}",
-        "options": {
-          "systemMessage": "You are ATHENA (Αθηνά), the root cause analysis agent.\n\nKnown failure signatures:\n- 2.3kHz harmonic + vibration = Bearing degradation\n- Temperature + current = Motor winding issues\n- Pressure drops + seal wear = Hydraulic seal failure\n\nOutput JSON:\n{\n  \"root_cause\": \"<cause>\",\n  \"confidence\": 0.0-1.0,\n  \"evidence\": [\"<evidence>\"],\n  \"recommendation\": \"<action>\",\n  \"urgency_days\": <number>\n}"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "HERMES_WORKFLOW_ID",
+          "mode": "id"
         }
       },
-      "id": "athena-agent",
-      "name": "Athena (Analyzer)",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.6,
-      "position": [1150, 200]
+      "id": "call-hermes",
+      "name": "Call Hermes (Notify)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1940, 400]
     },
     {
       "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "Schedule maintenance:\nRecommendation: {{ $json.recommendation }}\nUrgency: {{ $json.urgency_days }} days\nEquipment: HYD_PRESS_07",
-        "options": {
-          "systemMessage": "You are VIDHAATA (विधाता), the maintenance scheduler.\n\nAvailable technicians:\n- Rajesh Kumar: Hydraulics (15 yrs)\n- Priya Sharma: Electrical (8 yrs)\n- Amit Patel: Mechanical/bearings (12 yrs)\n- Sunita Reddy: General (5 yrs)\n\nOutput JSON:\n{\n  \"scheduled_date\": \"<ISO 8601>\",\n  \"technician\": \"<name>\",\n  \"parts_needed\": [\"<parts>\"],\n  \"estimated_downtime_hours\": <number>\n}"
-        }
+        "jsCode": "const athena = $('Call Athena (Analyze)').first().json;\nconst vidhaata = $('Call Vidhaata (Schedule)').first().json;\nconst hermes = $input.first().json;\n\nreturn {\n  json: {\n    chain: 'ESCALATION',\n    status: 'COMPLETED',\n    diagnosis: athena,\n    schedule: vidhaata,\n    notification: hermes,\n    timestamp: new Date().toISOString()\n  }\n};"
       },
-      "id": "vidhaata-agent",
-      "name": "Vidhaata (Scheduler)",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.6,
-      "position": [1400, 200]
+      "id": "final-result",
+      "name": "Compile Final Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 400]
     },
     {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ {pipeline: 'escalation', stage: 'complete', jibreel: $node['Jibreel (Detector)'].json, athena: $node['Athena (Analyzer)'].json, vidhaata: $json} }}"
-      },
-      "id": "respond-scheduled",
-      "name": "Respond (Scheduled)",
+      "parameters": { "options": {} },
+      "id": "respond",
+      "name": "Return Result",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [1650, 200]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ {pipeline: 'escalation', stage: 'monitoring', jibreel: $json, message: 'No escalation required, continuing to monitor'} }}"
-      },
-      "id": "respond-monitor",
-      "name": "Respond (Monitor Only)",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [900, 400]
+      "typeVersion": 1.1,
+      "position": [2380, 400]
     }
   ],
   "connections": {
-    "Pre-classified Anomaly Input": {
+    "Receive Anomaly": {
+      "main": [[{ "node": "Prepare for Athena", "type": "main", "index": 0 }]]
+    },
+    "Prepare for Athena": {
+      "main": [[{ "node": "Call Athena (Analyze)", "type": "main", "index": 0 }]]
+    },
+    "Call Athena (Analyze)": {
+      "main": [[{ "node": "Prepare for Vidhaata", "type": "main", "index": 0 }]]
+    },
+    "Prepare for Vidhaata": {
+      "main": [[{ "node": "Call Vidhaata (Schedule)", "type": "main", "index": 0 }]]
+    },
+    "Call Vidhaata (Schedule)": {
+      "main": [[{ "node": "Needs Human Approval?", "type": "main", "index": 0 }]]
+    },
+    "Needs Human Approval?": {
       "main": [
-        [
-          {
-            "node": "Jibreel (Detector)",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Prepare Approval Request", "type": "main", "index": 0 }],
+        [{ "node": "Prepare Notification", "type": "main", "index": 0 }]
       ]
     },
-    "Jibreel (Detector)": {
-      "main": [
-        [
-          {
-            "node": "Escalate?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Prepare Approval Request": {
+      "main": [[{ "node": "Merge Messages", "type": "main", "index": 0 }]]
     },
-    "Escalate?": {
-      "main": [
-        [
-          {
-            "node": "Fetch Maintenance History",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Respond (Monitor Only)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Prepare Notification": {
+      "main": [[{ "node": "Merge Messages", "type": "main", "index": 1 }]]
     },
-    "Fetch Maintenance History": {
-      "main": [
-        [
-          {
-            "node": "Athena (Analyzer)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Merge Messages": {
+      "main": [[{ "node": "Call Hermes (Notify)", "type": "main", "index": 0 }]]
     },
-    "Athena (Analyzer)": {
-      "main": [
-        [
-          {
-            "node": "Vidhaata (Scheduler)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Call Hermes (Notify)": {
+      "main": [[{ "node": "Compile Final Result", "type": "main", "index": 0 }]]
     },
-    "Vidhaata (Scheduler)": {
-      "main": [
-        [
-          {
-            "node": "Respond (Scheduled)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Compile Final Result": {
+      "main": [[{ "node": "Return Result", "type": "main", "index": 0 }]]
     }
   },
-  "settings": {
-    "executionOrder": "v1"
-  }
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "Ghost-Agents" }, { "name": "Layer-2" }]
 }

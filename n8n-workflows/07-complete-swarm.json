@@ -1,167 +1,265 @@
 {
-  "name": "Ghost Swarm - Complete System",
+  "name": "🐝 Complete Ghost Swarm",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "factory-telemetry",
-        "responseMode": "lastNode",
+        "path": "ghost-swarm",
         "options": {}
       },
-      "id": "entry-point",
-      "name": "Telemetry Entry",
+      "id": "entry",
+      "name": "Swarm Entry Point",
       "type": "n8n-nodes-base.webhook",
-      "position": [200, 400]
+      "typeVersion": 2,
+      "position": [180, 400],
+      "webhookId": "ghost-swarm"
     },
     {
       "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "Sensor reading: {{ JSON.stringify($json) }}",
-        "options": {
-          "systemMessage": "You are DRISHTI. Monitor sensor data. Output JSON with: {sensors: {...}, trends: {...}, status: 'OK'|'ANOMALY', anomaly_details: string|null}"
-        }
+        "operation": "getAll",
+        "documentId": { "__rl": true, "value": "YOUR_SPREADSHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Telemetry", "mode": "list" },
+        "filters": {},
+        "options": { "dataLocationOnSheet": { "values": { "headerRow": 1, "firstDataRow": 2 } } }
       },
-      "name": "Drishti (Monitor)",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "position": [450, 400]
+      "id": "gsheet",
+      "name": "Load Telemetry Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [180, 600]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "mergeByFields": { "values": [] },
+        "options": {}
+      },
+      "id": "merge-entry",
+      "name": "Merge Entry Points",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [400, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get latest reading or use webhook data\nconst items = $input.all();\nlet sensorData;\n\nif (items[0]?.json?.body) {\n  // Webhook data\n  sensorData = items[0].json.body;\n} else {\n  // Google Sheet data - get latest\n  sensorData = items[items.length - 1]?.json || items[0]?.json;\n}\n\nreturn {\n  json: {\n    sensor_data: JSON.stringify(sensorData),\n    equipment_id: sensorData.equipment_id || 'HYD_PRESS_07',\n    analysis_type: 'comprehensive'\n  }\n};"
+      },
+      "id": "prep-stage1",
+      "name": "Stage 1: Prepare Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 500]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "DRISHTI_WORKFLOW_ID", "mode": "id" }
+      },
+      "id": "drishti",
+      "name": "🔮 Drishti (Monitor)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [840, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const drishtiResult = $input.first().json;\nreturn {\n  json: {\n    drishti_report: JSON.stringify(drishtiResult),\n    historical_context: 'Continuous monitoring active'\n  }\n};"
+      },
+      "id": "prep-jibreel",
+      "name": "Prepare for Jibreel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 500]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "JIBREEL_WORKFLOW_ID", "mode": "id" }
+      },
+      "id": "jibreel",
+      "name": "⚠️ Jibreel (Detect)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1280, 500]
     },
     {
       "parameters": {
         "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.status }}",
-              "value2": "ANOMALY"
-            }
-          ]
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{
+            "id": "escalate-check",
+            "leftValue": "={{ $json.escalate_to_athena }}",
+            "rightValue": true,
+            "operator": { "type": "boolean", "operation": "equals" }
+          }]
         }
       },
-      "name": "Anomaly?",
-      "type": "n8n-nodes-base.if",
-      "position": [700, 400]
-    },
-    {
-      "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "Anomaly detected: {{ $json.anomaly_details }}",
-        "options": {
-          "systemMessage": "You are JIBREEL. Classify anomaly severity. Output: {severity: 'INFO'|'WARNING'|'CRITICAL', classification: string, escalate: boolean, confidence: number}"
-        }
-      },
-      "name": "Jibreel (Detector)",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "position": [950, 300]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "boolean": [
-            {
-              "value1": "={{ $json.escalate }}",
-              "value2": true
-            }
-          ]
-        }
-      },
+      "id": "escalate-decision",
       "name": "Escalate?",
       "type": "n8n-nodes-base.if",
-      "position": [1200, 300]
+      "typeVersion": 2,
+      "position": [1500, 500]
     },
     {
       "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "Analyze: {{ $json.classification }}. Equipment: HYD_PRESS_07. Check maintenance history.",
-        "options": {
-          "systemMessage": "You are ATHENA. Perform root cause analysis. Use maintenance history tool. Output: {root_cause: string, confidence: number, evidence: string[], recommendation: string, urgency_days: number}"
-        }
+        "jsCode": "const jibreelResult = $input.first().json;\nreturn {\n  json: {\n    anomaly_report: JSON.stringify(jibreelResult),\n    equipment_id: 'HYD_PRESS_07'\n  }\n};"
       },
-      "name": "Athena (Analyzer)",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "position": [1450, 200]
+      "id": "prep-athena",
+      "name": "Prepare for Athena",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 400]
     },
     {
       "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "Schedule maintenance: {{ $json.recommendation }}. Urgency: {{ $json.urgency_days }} days.",
-        "options": {
-          "systemMessage": "You are VIDHAATA. Schedule maintenance. Output: {scheduled_date: ISO string, technician: string, parts_needed: string[], estimated_downtime_hours: number}"
-        }
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "ATHENA_WORKFLOW_ID", "mode": "id" }
       },
-      "name": "Vidhaata (Scheduler)",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "position": [1700, 200]
+      "id": "athena",
+      "name": "🧠 Athena (Analyze)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1940, 400]
     },
     {
       "parameters": {
-        "channel": "#maintenance",
-        "text": "🔧 MAINTENANCE SCHEDULED\n\nEquipment: HYD_PRESS_07\nIssue: {{ $node['Athena (Analyzer)'].json.root_cause }}\nDate: {{ $json.scheduled_date }}\nTechnician: {{ $json.technician }}\n\n✅ Approve | ❌ Reject"
+        "jsCode": "const athenaResult = $input.first().json;\nreturn {\n  json: {\n    diagnosis: JSON.stringify(athenaResult),\n    urgency: athenaResult.recommendation?.urgency || 'WITHIN_WEEK',\n    parts_needed: JSON.stringify(athenaResult.recommendation?.parts_needed || [])\n  }\n};"
       },
-      "name": "Hermes (Messenger)",
-      "type": "n8n-nodes-base.slack",
-      "position": [1950, 200]
+      "id": "prep-vidhaata",
+      "name": "Prepare for Vidhaata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 400]
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ {status: 'logged', severity: 'INFO'} }}"
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "VIDHAATA_WORKFLOW_ID", "mode": "id" }
       },
-      "name": "Log Only",
+      "id": "vidhaata",
+      "name": "📅 Vidhaata (Schedule)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2380, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const athena = $('🧠 Athena (Analyze)').first().json;\nconst vidhaata = $input.first().json;\n\nreturn {\n  json: {\n    message_type: vidhaata.requires_human_approval ? 'APPROVAL_REQUIRED' : 'MAINTENANCE_SCHEDULED',\n    severity: vidhaata.requires_human_approval ? 'WARNING' : 'SUCCESS',\n    content: {\n      root_cause: athena.root_cause,\n      schedule: vidhaata.scheduled_maintenance,\n      technician: vidhaata.assigned_technician\n    }\n  }\n};"
+      },
+      "id": "prep-hermes-escalation",
+      "name": "Prepare Escalation Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2600, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const jibreelResult = $input.first().json;\n\nreturn {\n  json: {\n    message_type: 'STATUS_UPDATE',\n    severity: jibreelResult.classification || 'INFO',\n    content: {\n      classification: jibreelResult.classification,\n      message: 'System monitoring continues. No escalation required.',\n      next_check: 'Scheduled'\n    }\n  }\n};"
+      },
+      "id": "prep-hermes-info",
+      "name": "Prepare Info Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1720, 600]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "mergeByFields": { "values": [] },
+        "options": {}
+      },
+      "id": "merge-hermes",
+      "name": "Merge Hermes Inputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2820, 500]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "HERMES_WORKFLOW_ID", "mode": "id" }
+      },
+      "id": "hermes",
+      "name": "📨 Hermes (Notify)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [3040, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compile complete swarm execution result\nconst drishti = $('🔮 Drishti (Monitor)').first()?.json || {};\nconst jibreel = $('⚠️ Jibreel (Detect)').first()?.json || {};\nconst athena = $('🧠 Athena (Analyze)').first()?.json || null;\nconst vidhaata = $('📅 Vidhaata (Schedule)').first()?.json || null;\nconst hermes = $input.first().json;\n\nreturn {\n  json: {\n    swarm: 'GHOST_IN_THE_MACHINE',\n    execution_id: Math.random().toString(36).substr(2, 9),\n    status: 'COMPLETE',\n    escalated: !!athena,\n    agents_executed: [\n      'DRISHTI',\n      'JIBREEL',\n      ...(athena ? ['ATHENA'] : []),\n      ...(vidhaata ? ['VIDHAATA'] : []),\n      'HERMES'\n    ],\n    results: {\n      monitoring: drishti,\n      detection: jibreel,\n      analysis: athena,\n      scheduling: vidhaata,\n      notification: hermes\n    },\n    outcome: athena \n      ? `Anomaly detected and escalated. Maintenance ${vidhaata?.scheduled_maintenance ? 'scheduled' : 'pending'}.`\n      : 'Monitoring continues. No anomalies requiring escalation.',\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "final-compile",
+      "name": "Compile Swarm Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3260, 500]
+    },
+    {
+      "parameters": { "options": {} },
+      "id": "respond",
+      "name": "Return Swarm Result",
       "type": "n8n-nodes-base.respondToWebhook",
-      "position": [950, 500]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ {status: 'monitoring', next_check: 'scheduled'} }}"
-      },
-      "name": "Continue Monitoring",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "position": [1450, 400]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}"
-      },
-      "name": "Final Response",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "position": [2200, 200]
+      "typeVersion": 1.1,
+      "position": [3480, 500]
     }
   ],
   "connections": {
-    "Telemetry Entry": {
-      "main": [[{"node": "Drishti (Monitor)"}]]
+    "Swarm Entry Point": {
+      "main": [[{ "node": "Merge Entry Points", "type": "main", "index": 0 }]]
     },
-    "Drishti (Monitor)": {
-      "main": [[{"node": "Anomaly?"}]]
+    "Load Telemetry Data": {
+      "main": [[{ "node": "Merge Entry Points", "type": "main", "index": 1 }]]
     },
-    "Anomaly?": {
-      "main": [
-        [{"node": "Jibreel (Detector)"}],
-        [{"node": "Log Only"}]
-      ]
+    "Merge Entry Points": {
+      "main": [[{ "node": "Stage 1: Prepare Data", "type": "main", "index": 0 }]]
     },
-    "Jibreel (Detector)": {
-      "main": [[{"node": "Escalate?"}]]
+    "Stage 1: Prepare Data": {
+      "main": [[{ "node": "🔮 Drishti (Monitor)", "type": "main", "index": 0 }]]
+    },
+    "🔮 Drishti (Monitor)": {
+      "main": [[{ "node": "Prepare for Jibreel", "type": "main", "index": 0 }]]
+    },
+    "Prepare for Jibreel": {
+      "main": [[{ "node": "⚠️ Jibreel (Detect)", "type": "main", "index": 0 }]]
+    },
+    "⚠️ Jibreel (Detect)": {
+      "main": [[{ "node": "Escalate?", "type": "main", "index": 0 }]]
     },
     "Escalate?": {
       "main": [
-        [{"node": "Athena (Analyzer)"}],
-        [{"node": "Continue Monitoring"}]
+        [{ "node": "Prepare for Athena", "type": "main", "index": 0 }],
+        [{ "node": "Prepare Info Message", "type": "main", "index": 0 }]
       ]
     },
-    "Athena (Analyzer)": {
-      "main": [[{"node": "Vidhaata (Scheduler)"}]]
+    "Prepare for Athena": {
+      "main": [[{ "node": "🧠 Athena (Analyze)", "type": "main", "index": 0 }]]
     },
-    "Vidhaata (Scheduler)": {
-      "main": [[{"node": "Hermes (Messenger)"}]]
+    "🧠 Athena (Analyze)": {
+      "main": [[{ "node": "Prepare for Vidhaata", "type": "main", "index": 0 }]]
     },
-    "Hermes (Messenger)": {
-      "main": [[{"node": "Final Response"}]]
+    "Prepare for Vidhaata": {
+      "main": [[{ "node": "📅 Vidhaata (Schedule)", "type": "main", "index": 0 }]]
+    },
+    "📅 Vidhaata (Schedule)": {
+      "main": [[{ "node": "Prepare Escalation Message", "type": "main", "index": 0 }]]
+    },
+    "Prepare Escalation Message": {
+      "main": [[{ "node": "Merge Hermes Inputs", "type": "main", "index": 0 }]]
+    },
+    "Prepare Info Message": {
+      "main": [[{ "node": "Merge Hermes Inputs", "type": "main", "index": 1 }]]
+    },
+    "Merge Hermes Inputs": {
+      "main": [[{ "node": "📨 Hermes (Notify)", "type": "main", "index": 0 }]]
+    },
+    "📨 Hermes (Notify)": {
+      "main": [[{ "node": "Compile Swarm Result", "type": "main", "index": 0 }]]
+    },
+    "Compile Swarm Result": {
+      "main": [[{ "node": "Return Swarm Result", "type": "main", "index": 0 }]]
     }
-  }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "Ghost-Agents" }, { "name": "Layer-3" }, { "name": "Complete-Swarm" }]
 }

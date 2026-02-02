@@ -1,152 +1,131 @@
 {
-  "name": "Drishti - Telemetry Monitor",
+  "name": "🔮 Drishti - Telemetry Monitor",
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "drishti-webhook",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "webhook-trigger",
-      "name": "Sensor Data Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [250, 300]
-    },
-    {
-      "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "={{ $json.body }}",
-        "options": {
-          "systemMessage": "You are Drishti (दृष्टि), a telemetry monitoring agent for industrial equipment at Shakti Heavy Industries.\n\nYour role is to observe sensor data and maintain awareness of equipment state for Hydraulic Press Unit #7.\n\nFor each reading you receive, analyze and output:\n1. Current values for all sensors with their units\n2. Trend direction (↑ stable ↓) compared to normal baselines\n3. Any readings outside normal bounds\n4. Overall equipment health assessment\n\nNormal operating bounds:\n- Temperature: 60-85°C\n- Vibration RMS: 1.5-2.5 mm/s\n- Pressure: 150-180 bar\n- Motor Current: 12-15 A\n- Harmonics 2.3kHz: < 0.20 (CRITICAL INDICATOR)\n\nBe concise. Flag concerns clearly with severity: INFO, WARNING, or CRITICAL.\n\nFormat your response as structured JSON."
-        }
-      },
-      "id": "ai-agent",
-      "name": "Drishti Agent",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.6,
-      "position": [500, 300]
-    },
-    {
-      "parameters": {
-        "url": "http://influxdb:8086/api/v2/query",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\"query\": \"from(bucket: \\\"factory_telemetry\\\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \\\"sensor_reading\\\") |> last()\"}",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true
-            }
-          }
-        }
-      },
-      "id": "query-influxdb",
-      "name": "Query Historical Data",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [500, 500]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "string": [
+        "mode": "defineBelow",
+        "fields": {
+          "values": [
             {
-              "value1": "={{ $json.severity }}",
-              "operation": "equals",
-              "value2": "CRITICAL"
+              "name": "sensor_data",
+              "type": "string"
+            },
+            {
+              "name": "equipment_id",
+              "type": "string"
+            },
+            {
+              "name": "analysis_type",
+              "type": "string"
             }
           ]
         }
       },
-      "id": "severity-check",
-      "name": "Check Severity",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [750, 300]
+      "id": "trigger",
+      "name": "When Called By Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [180, 300]
     },
     {
       "parameters": {
-        "channel": "#factory-alerts",
-        "text": "🚨 DRISHTI ALERT - Unit #7\n\n{{ $json.message }}",
-        "otherOptions": {}
+        "httpMethod": "POST",
+        "path": "drishti-analyze",
+        "options": {}
       },
-      "id": "slack-alert",
-      "name": "Send Alert",
-      "type": "n8n-nodes-base.slack",
-      "typeVersion": 2.1,
-      "position": [1000, 200]
+      "id": "webhook",
+      "name": "Webhook - Direct Test",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 500],
+      "webhookId": "drishti-test"
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}"
+        "mode": "combine",
+        "mergeByFields": {
+          "values": []
+        },
+        "options": {}
+      },
+      "id": "merge",
+      "name": "Merge Inputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [400, 400]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze this sensor telemetry data:\n\n{{ $json.sensor_data || JSON.stringify($json.body) }}\n\nEquipment: {{ $json.equipment_id || $json.body?.equipment_id || 'HYD_PRESS_07' }}\nAnalysis Type: {{ $json.analysis_type || 'standard' }}",
+        "options": {
+          "systemMessage": "You are DRISHTI (दृष्टि - \"Vision\"), a telemetry monitoring agent for Shakti Heavy Industries.\n\nYour role is to observe sensor data and assess equipment health for industrial machinery.\n\n## NORMAL OPERATING BOUNDS:\n- Vibration RMS: 1.5 - 2.5 mm/s\n- Temperature: 60 - 85°C  \n- Pressure: 150 - 180 bar\n- Motor Current: 12 - 15 A\n- Acoustic Level: 70 - 80 dB\n- Flow Rate: 45 - 52 L/min\n- Harmonics 2.3kHz: < 0.18 (CRITICAL INDICATOR)\n\n## OUTPUT FORMAT (JSON):\n```json\n{\n  \"equipment_id\": \"HYD_PRESS_07\",\n  \"timestamp\": \"ISO timestamp\",\n  \"status\": \"NORMAL\" | \"ATTENTION\" | \"WARNING\" | \"CRITICAL\",\n  \"sensors\": {\n    \"vibration_rms\": { \"value\": number, \"unit\": \"mm/s\", \"trend\": \"↑\" | \"→\" | \"↓\", \"status\": \"ok\" | \"elevated\" | \"critical\" },\n    // ... other sensors\n  },\n  \"harmonics_analysis\": {\n    \"freq_2_3khz\": number,\n    \"drift_from_baseline\": \"percentage\",\n    \"concern_level\": \"none\" | \"monitoring\" | \"elevated\" | \"critical\"\n  },\n  \"observations\": [\"List of notable observations\"],\n  \"recommendation\": \"Continue monitoring\" | \"Increase monitoring frequency\" | \"Escalate to detection analysis\"\n}\n```\n\nBe precise and data-driven. Flag any values outside normal bounds."
+        },
+        "requestOptions": {}
+      },
+      "id": "agent",
+      "name": "Drishti Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [620, 400]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "openai",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [620, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the AI response and structure output\nconst output = $input.first().json.output;\n\ntry {\n  // Try to extract JSON from the response\n  const jsonMatch = output.match(/```json\\n([\\s\\S]*?)\\n```/) || output.match(/\\{[\\s\\S]*\\}/);\n  const parsed = jsonMatch ? JSON.parse(jsonMatch[1] || jsonMatch[0]) : { raw: output };\n  \n  return {\n    json: {\n      ...parsed,\n      agent: 'DRISHTI',\n      processed_at: new Date().toISOString()\n    }\n  };\n} catch (e) {\n  return {\n    json: {\n      agent: 'DRISHTI',\n      status: 'PARSE_ERROR',\n      raw_output: output,\n      error: e.message,\n      processed_at: new Date().toISOString()\n    }\n  };\n}"
+      },
+      "id": "parse",
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 400]
+    },
+    {
+      "parameters": {
+        "options": {}
       },
       "id": "respond",
-      "name": "Respond",
+      "name": "Return Result",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [1000, 400]
+      "typeVersion": 1.1,
+      "position": [1060, 500]
     }
   ],
   "connections": {
-    "Sensor Data Webhook": {
-      "main": [
-        [
-          {
-            "node": "Drishti Agent",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "When Called By Another Workflow": {
+      "main": [[{ "node": "Merge Inputs", "type": "main", "index": 0 }]]
+    },
+    "Webhook - Direct Test": {
+      "main": [[{ "node": "Merge Inputs", "type": "main", "index": 1 }]]
+    },
+    "Merge Inputs": {
+      "main": [[{ "node": "Drishti Agent", "type": "main", "index": 0 }]]
     },
     "Drishti Agent": {
-      "main": [
-        [
-          {
-            "node": "Check Severity",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Parse Response", "type": "main", "index": 0 }]]
     },
-    "Check Severity": {
-      "main": [
-        [
-          {
-            "node": "Send Alert",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "OpenAI Chat Model": {
+      "ai_languageModel": [[{ "node": "Drishti Agent", "type": "ai_languageModel", "index": 0 }]]
     },
-    "Send Alert": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Parse Response": {
+      "main": [[{ "node": "Return Result", "type": "main", "index": 0 }]]
     }
   },
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "staticData": null,
+  "tags": [{ "name": "Ghost-Agents" }, { "name": "Layer-1" }]
 }

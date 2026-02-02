@@ -1,144 +1,161 @@
 {
-  "name": "Anomaly Detection Chain (Drishti → Jibreel)",
+  "name": "🔗 Anomaly Detection Chain (Drishti → Jibreel)",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "anomaly-chain-test",
-        "responseMode": "responseNode",
+        "path": "detection-chain",
         "options": {}
       },
-      "id": "webhook-trigger",
-      "name": "Sensor Data Input",
+      "id": "webhook",
+      "name": "Receive Sensor Data",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [200, 300]
+      "position": [180, 400],
+      "webhookId": "detection-chain"
     },
     {
       "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "Sensor reading: {{ JSON.stringify($json.body) }}",
+        "operation": "getAll",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Telemetry",
+          "mode": "list"
+        },
+        "filters": {},
         "options": {
-          "systemMessage": "You are DRISHTI (दृष्टि), the telemetry monitoring agent for Shakti Heavy Industries.\n\nAnalyze the sensor data and determine if there is an anomaly.\n\nNormal operating bounds for Hydraulic Press Unit #7:\n- Temperature: 60-85°C\n- Vibration RMS: 1.5-2.5 mm/s\n- Pressure: 150-180 bar\n- Motor Current: 12-15 A\n- Harmonics 2.3kHz: < 0.20 (CRITICAL INDICATOR)\n\nOutput strictly as JSON:\n{\n  \"sensors\": {\"<sensor_name>\": <value>, ...},\n  \"trends\": {\"<sensor_name>\": \"↑\" | \"→\" | \"↓\", ...},\n  \"status\": \"OK\" | \"ANOMALY\",\n  \"anomaly_details\": \"<description if ANOMALY, null if OK>\"\n}"
-        }
-      },
-      "id": "drishti-agent",
-      "name": "Drishti (Monitor)",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.6,
-      "position": [450, 300]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.status }}",
-              "operation": "equals",
-              "value2": "ANOMALY"
+          "dataLocationOnSheet": {
+            "values": {
+              "headerRow": 1,
+              "firstDataRow": 2
             }
-          ]
+          }
         }
       },
-      "id": "anomaly-check",
-      "name": "Anomaly Detected?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [700, 300]
+      "id": "gsheet-read",
+      "name": "Read from Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [180, 600],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets"
+        }
+      }
     },
     {
       "parameters": {
-        "agent": "conversationalAgent",
-        "promptType": "define",
-        "text": "Anomaly detected: {{ $json.anomaly_details }}\n\nSensor values: {{ JSON.stringify($json.sensors) }}",
-        "options": {
-          "systemMessage": "You are JIBREEL (جبريل), the anomaly classification agent for Shakti Heavy Industries.\n\nClassify the severity of the detected anomaly.\n\nClassification guidelines:\n- INFO: Minor deviation, within acceptable variance\n- WARNING: Notable deviation, monitor closely\n- CRITICAL: Significant deviation, potential failure imminent\n\nEscalation triggers (set escalate: true):\n- Any CRITICAL severity\n- WARNING with confidence > 0.8\n- Multiple correlated anomalies\n\nOutput strictly as JSON:\n{\n  \"severity\": \"INFO\" | \"WARNING\" | \"CRITICAL\",\n  \"classification\": \"<anomaly type description>\",\n  \"escalate\": true | false,\n  \"confidence\": 0.0-1.0\n}"
+        "mode": "combine",
+        "mergeByFields": { "values": [] },
+        "options": {}
+      },
+      "id": "merge-sources",
+      "name": "Merge Data Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [400, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare data for Drishti\nconst items = $input.all();\nconst latestReading = items[items.length - 1]?.json || items[0]?.json;\n\nreturn {\n  json: {\n    sensor_data: JSON.stringify(latestReading),\n    equipment_id: latestReading.equipment_id || 'HYD_PRESS_07',\n    analysis_type: 'standard'\n  }\n};"
+      },
+      "id": "prepare-drishti",
+      "name": "Prepare for Drishti",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 500]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "DRISHTI_WORKFLOW_ID",
+          "mode": "id"
         }
       },
-      "id": "jibreel-agent",
-      "name": "Jibreel (Detector)",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.6,
-      "position": [950, 200]
+      "id": "call-drishti",
+      "name": "Call Drishti (Monitor)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [840, 500]
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ {pipeline: 'anomaly-detection', stage: 'complete', drishti_status: $node['Drishti (Monitor)'].json.status, jibreel_result: $json} }}"
+        "jsCode": "const drishtiResult = $input.first().json;\n\nreturn {\n  json: {\n    drishti_report: JSON.stringify(drishtiResult),\n    historical_context: 'Day 12 of monitoring. Previous 7 days showed gradual increase in harmonics.'\n  }\n};"
       },
-      "id": "respond-classified",
-      "name": "Respond (Classified)",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [1200, 200]
+      "id": "prepare-jibreel",
+      "name": "Prepare for Jibreel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 500]
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ {pipeline: 'anomaly-detection', stage: 'complete', drishti_status: 'OK', message: 'No anomaly detected'} }}"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "JIBREEL_WORKFLOW_ID",
+          "mode": "id"
+        }
       },
-      "id": "respond-ok",
-      "name": "Respond (OK)",
+      "id": "call-jibreel",
+      "name": "Call Jibreel (Detect)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1280, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const drishtiResult = $('Call Drishti (Monitor)').first().json;\nconst jibrilResult = $input.first().json;\n\nreturn {\n  json: {\n    chain: 'DETECTION',\n    drishti_analysis: drishtiResult,\n    jibreel_classification: jibrilResult,\n    should_escalate: jibrilResult.escalate_to_athena || false,\n    classification: jibrilResult.classification || 'UNKNOWN',\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "combine-results",
+      "name": "Combine Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 500]
+    },
+    {
+      "parameters": { "options": {} },
+      "id": "respond",
+      "name": "Return Chain Result",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [950, 400]
+      "typeVersion": 1.1,
+      "position": [1720, 500]
     }
   ],
   "connections": {
-    "Sensor Data Input": {
-      "main": [
-        [
-          {
-            "node": "Drishti (Monitor)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Receive Sensor Data": {
+      "main": [[{ "node": "Merge Data Sources", "type": "main", "index": 0 }]]
     },
-    "Drishti (Monitor)": {
-      "main": [
-        [
-          {
-            "node": "Anomaly Detected?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Read from Google Sheet": {
+      "main": [[{ "node": "Merge Data Sources", "type": "main", "index": 1 }]]
     },
-    "Anomaly Detected?": {
-      "main": [
-        [
-          {
-            "node": "Jibreel (Detector)",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Respond (OK)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Merge Data Sources": {
+      "main": [[{ "node": "Prepare for Drishti", "type": "main", "index": 0 }]]
     },
-    "Jibreel (Detector)": {
-      "main": [
-        [
-          {
-            "node": "Respond (Classified)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Prepare for Drishti": {
+      "main": [[{ "node": "Call Drishti (Monitor)", "type": "main", "index": 0 }]]
+    },
+    "Call Drishti (Monitor)": {
+      "main": [[{ "node": "Prepare for Jibreel", "type": "main", "index": 0 }]]
+    },
+    "Prepare for Jibreel": {
+      "main": [[{ "node": "Call Jibreel (Detect)", "type": "main", "index": 0 }]]
+    },
+    "Call Jibreel (Detect)": {
+      "main": [[{ "node": "Combine Results", "type": "main", "index": 0 }]]
+    },
+    "Combine Results": {
+      "main": [[{ "node": "Return Chain Result", "type": "main", "index": 0 }]]
     }
   },
-  "settings": {
-    "executionOrder": "v1"
-  }
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "Ghost-Agents" }, { "name": "Layer-2" }]
 }
