@@ -1,26 +1,19 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         WORKSHOP INFRASTRUCTURE                              │
+│                         WORKSHOP INFRASTRUCTURE (Cloud)                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐     │
-│  │  DATA GENERATOR │ ──▶  │     KAFKA       │ ──▶  │   TELEGRAF      │     │
-│  │  (Python)       │      │  (Message Bus)  │      │ (Collector)     │     │
-│  │  Neel's Sensors │      │                 │      │                 │     │
-│  └─────────────────┘      └─────────────────┘      └────────┬────────┘     │
-│                                                              │              │
-│                                                              ▼              │
-│  ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐     │
-│  │    GRAFANA      │ ◀──  │    INFLUXDB     │ ◀────│                 │     │
-│  │  (Dashboards)   │      │  (Time-Series)  │      │                 │     │
-│  │   Port 3000     │      │   Port 8086     │      │                 │     │
+│  │  BACKEND API    │ ──▶  │  INFLUXDB       │ ──▶  │  GRAFANA        │     │
+│  │  (Telemetry     │      │  CLOUD          │      │  CLOUD          │     │
+│  │   generate/     │      │  (Time-Series)  │      │  (Dashboards)   │     │
+│  │   push-influx)  │      │                 │      │                 │     │
 │  └─────────────────┘      └─────────────────┘      └─────────────────┘     │
-│           │                                                                 │
-│           │ Webhook                                                         │
-│           ▼                                                                 │
+│           │                                                                  │
+│           │ Webhook (optional)                                               │
+│           ▼                                                                  │
 │  ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐     │
-│  │       N8N       │ ──▶  │   AI AGENTS     │ ──▶  │  WORKSHOP APP   │     │
+│  │    N8N CLOUD    │ ──▶  │   AI AGENTS     │ ──▶  │  WORKSHOP APP   │     │
 │  │   (Workflows)   │      │  (Claude/GPT)   │      │   (Next.js)     │     │
-│  │   Port 5678     │      │                 │      │   Port 3001     │     │
 │  └─────────────────┘      └─────────────────┘      └─────────────────┘     │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -56,6 +49,6 @@
   └─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘
        │              │              │              │              │
        │              │              │              │              │
-   Raw Data      Kafka/         Drishti/       Vidhaata       Hermes
-   Generation    Telegraf       Jibreel/       Schedule       Notify
-                                Athena
+   Raw Data      Backend/       Drishti/       Vidhaata       Hermes
+   Generation    InfluxDB       Jibreel/       Schedule       Notify
+   (API)         Cloud          Athena

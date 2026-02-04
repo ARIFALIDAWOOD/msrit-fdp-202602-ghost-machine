@@ -1,0 +1,237 @@
+{
+    "nodes": [
+      {
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "sensor_data",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "id": "9607736a-8f43-44ac-960a-ffc4b4b7c0b6",
+        "name": "When Called By Another Workflow",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          -768,
+          112
+        ]
+      },
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "drishti-analyze-single",
+          "responseMode": "responseNode",
+          "options": {
+            "allowedOrigins": "*"
+          }
+        },
+        "id": "0751db03-fc2e-4d36-9215-cf9b451fb332",
+        "name": "Webhook - Direct Test",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          -768,
+          304
+        ],
+        "webhookId": "drishti-test"
+      },
+      {
+        "parameters": {
+          "jsCode": "// Normalize webhook or subworkflow input to sensor_data, equipment_id, analysis_type\nconst item = $input.first().json;\nconst raw = item.body ?? item;\nconst sensor_data = raw.sensor_data ?? raw;\nconst equipment_id = raw.equipment_id ?? 'HYD_PRESS_07';\nconst analysis_type = raw.analysis_type ?? 'standard';\nreturn { json: { sensor_data, equipment_id, analysis_type } };"
+        },
+        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "name": "Normalize Input",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [-628, 208]
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "=Analyze this sensor telemetry data:\n\n{{ typeof $json.sensor_data === 'object' ? JSON.stringify($json.sensor_data) : $json.sensor_data }}\n\nEquipment: {{ $json.equipment_id }}\nAnalysis Type: {{ $json.analysis_type }}",
+          "options": {
+            "systemMessage": "You are DRISHTI (दृष्टि - \"Vision\"), a telemetry monitoring agent for Shakti Heavy Industries.\n\nYour role is to observe sensor data and assess equipment health for industrial machinery.\n\n## NORMAL OPERATING BOUNDS:\n- Vibration RMS: 1.5 - 2.5 mm/s\n- Temperature: 60 - 85°C  \n- Pressure: 150 - 180 bar\n- Motor Current: 12 - 15 A\n- Acoustic Level: 70 - 80 dB\n- Flow Rate: 45 - 52 L/min\n- Harmonics 2.3kHz: < 0.18 (CRITICAL INDICATOR)\n\n## OUTPUT FORMAT (JSON):\n```json\n{\n  \"equipment_id\": \"HYD_PRESS_07\",\n  \"timestamp\": \"ISO timestamp\",\n  \"status\": \"NORMAL\" | \"ATTENTION\" | \"WARNING\" | \"CRITICAL\",\n  \"sensors\": {\n    \"vibration_rms\": { \"value\": number, \"unit\": \"mm/s\", \"trend\": \"↑\" | \"→\" | \"↓\", \"status\": \"ok\" | \"elevated\" | \"critical\" },\n    // ... other sensors\n  },\n  \"harmonics_analysis\": {\n    \"freq_2_3khz\": number,\n    \"drift_from_baseline\": \"percentage\",\n    \"concern_level\": \"none\" | \"monitoring\" | \"elevated\" | \"critical\"\n  },\n  \"observations\": [\"List of notable observations\"],\n  \"recommendation\": \"Continue monitoring\" | \"Increase monitoring frequency\" | \"Escalate to detection analysis\"\n}\n```\n\nBe precise and data-driven. Flag any values outside normal bounds."
+          }
+        },
+        "id": "0a385094-8da9-4a79-88d3-526c710fe019",
+        "name": "Drishti Agent",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 1.7,
+        "position": [
+          -488,
+          208
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Parse the AI response and structure output\nconst output = $input.first().json.output;\n\ntry {\n  // Try to extract JSON from the response\n  const jsonMatch = output.match(/```json\\n([\\s\\S]*?)\\n```/) || output.match(/\\{[\\s\\S]*\\}/);\n  const parsed = jsonMatch ? JSON.parse(jsonMatch[1] || jsonMatch[0]) : { raw: output };\n  \n  return {\n    json: {\n      ...parsed,\n      agent: 'DRISHTI',\n      processed_at: new Date().toISOString()\n    }\n  };\n} catch (e) {\n  return {\n    json: {\n      agent: 'DRISHTI',\n      status: 'PARSE_ERROR',\n      raw_output: output,\n      error: e.message,\n      processed_at: new Date().toISOString()\n    }\n  };\n}"
+        },
+        "id": "7bb1829b-b4d4-4848-ab02-892437c7e9f5",
+        "name": "Parse Response",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          -80,
+          208
+        ]
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "id": "f39ece0a-5d25-412b-b55e-39df033a35e8",
+        "name": "Return Result",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          144,
+          208
+        ]
+      },
+      {
+        "parameters": {
+          "model": "moonshotai/kimi-k2.5",
+          "options": {
+            "temperature": 0.7
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+        "typeVersion": 1,
+        "position": [
+          -544,
+          432
+        ],
+        "id": "be8653c4-dfb2-4896-a99a-fa68e5fe3c3c",
+        "name": "OpenRouter Chat Model",
+        "credentials": {
+          "openRouterApi": {
+            "id": "guj6iLRaZnODZf9N",
+            "name": "OpenRouter account"
+          }
+        }
+      },
+      {
+        "parameters": {},
+        "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+        "typeVersion": 1,
+        "position": [
+          -416,
+          432
+        ],
+        "id": "430fa175-0e57-432f-81d9-76c65d508d95",
+        "name": "Calculator"
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "n8n-nodes-base.dateTimeTool",
+        "typeVersion": 2,
+        "position": [
+          -288,
+          432
+        ],
+        "id": "70e49538-d690-4c9b-b448-58293521bed6",
+        "name": "Date & Time"
+      }
+    ],
+    "connections": {
+      "When Called By Another Workflow": {
+        "main": [
+          [
+            {
+              "node": "Normalize Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Webhook - Direct Test": {
+        "main": [
+          [
+            {
+              "node": "Normalize Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Input": {
+        "main": [
+          [
+            {
+              "node": "Drishti Agent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Drishti Agent": {
+        "main": [
+          [
+            {
+              "node": "Parse Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Response": {
+        "main": [
+          [
+            {
+              "node": "Return Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenRouter Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Drishti Agent",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Calculator": {
+        "ai_tool": [
+          [
+            {
+              "node": "Drishti Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Date & Time": {
+        "ai_tool": [
+          [
+            {
+              "node": "Drishti Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "pinData": {},
+    "meta": {
+      "templateCredsSetupCompleted": true,
+      "instanceId": "92c004e582dfe86c3d6e215a12a3d349b98972649e502a959abdb6d280b08ba4"
+    }
+  }
